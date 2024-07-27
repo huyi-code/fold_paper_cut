@@ -10,6 +10,7 @@ todo:
 4.保存图片，背景图找个好看的
 5.撤回操作
 6.可选是否要折叠线
+7.折叠时动画效果
 """
 
 """
@@ -17,7 +18,7 @@ todo:
 7.24 写通用的展开图形逻辑，写折叠逻辑，还无法展示
 7.25 正常展示折叠后效果
 7.26 解决不对的方向直接崩溃的问题：不对的方向提示在后台，页面不反应；模拟画笔 
-7.27 todo:小图放大（+按钮），对应比例再创作和展开
+7.27 封装Button类，可以实现按正常流程先fold再draw再unfold，特殊情况未考虑，不能不按顺序或反复没考虑特殊情况
 """
 
 # 初始化Pygame
@@ -26,7 +27,7 @@ pygame.init()
 # 设置窗口大小
 GRID_WIDTH, GRID_HEIGHT = 800, 800
 screen = pygame.display.set_mode((GRID_WIDTH, GRID_HEIGHT))
-pygame.display.set_caption("剪窗花")
+pygame.display.set_caption("jianchuanghua")
 
 # 定义颜色
 BLACK = (0, 0, 0)
@@ -56,18 +57,45 @@ ALL_OPS = [UP, LEFT, LEFT_UP, RIGHT_UP]
 #纸张一半大小
 PAPER_HALF = 200
 
+DRAW_MODE = "draw"
+
+
+# 按钮类
+class Button:
+    def __init__(self, x, y, width, height, color=GRAY, text=""):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.color = color
+        self.text = text
+        self.font = pygame.font.Font(None, 20)
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height))
+        text_surf = self.font.render(self.text, True, BLACK)
+        text_rect = text_surf.get_rect(center=(self.x + self.width / 2, self.y + self.height / 2))
+        screen.blit(text_surf, text_rect)
+
+    def cover(self, pos):
+        return self.x <= pos[0] <= self.x + self.width and self.y <= pos[1] <= self.y + self.height
+
+
 
 class PaperCut():
     def __init__(self, surface_start_width=100, surface_start_height=100):
         self.paper_surface = pygame.Surface((400, 400))
         self.paper_surface.fill(RED)
         self.shape = SQUARE
-        self.surface = pygame.Surface((600, 600))
+        self.surface = pygame.Surface((500, 500))
         self.surface.fill(WHITE)
         self.use_pen = False
         self.lines = []
         self.surface_start_width = surface_start_width
         self.surface_start_height = surface_start_height
+        self.mode = None
+        self.op_list = []
+        self.shape_list = []
 
 
     def init_show(self, screen):
@@ -97,6 +125,8 @@ class PaperCut():
             return None
         else:
             (shape, width, height) = res
+            self.op_list.append(op)
+            self.shape_list.append(shape)
             self.paper_surface = pygame.Surface((width, height))
             self.paper_surface.fill(WHITE)
             print("start surface update: ", res)
@@ -109,24 +139,27 @@ class PaperCut():
                 pygame.draw.polygon(self.paper_surface, RED, [(x, y), (x + width, y), (x, y + height)])
             elif shape == TRIANGLE:
                 pygame.draw.polygon(self.paper_surface, RED, [(x, y), (x + width, y), (x + width//2, y + height)])
-
         return shape
 
 
+    def unfold(self, x, y):
+        paper_surface = self.paper_surface
+        while len(self.op_list) > 0:
+            op = self.op_list.pop()
+            shape = self.shape_list.pop()
+            print(op, shape)
+            if op == UP:
+                paper_surface = self.draw_up(paper_surface, x, y)
+            elif op == LEFT:
+                paper_surface = self.draw_left(paper_surface, x, y)
+            elif op == LEFT_UP:
+                paper_surface = self.draw_up_left(paper_surface, x, y, shape)
+            elif op == RIGHT_UP:
+                paper_surface = self.draw_up_right(paper_surface, x, y, shape)
+        return paper_surface
 
-    # def draw_one(self, has_line=True):
-    #     basic_surface = pygame.Surface((PAPER_HALF * 2, PAPER_HALF), pygame.SRCALPHA)
-    #     # basic_surface.fill(RED)
-    #
-    #     #剪基础图案
-    #     pygame.draw.polygon(basic_surface, RED, [(0, 0), (PAPER_HALF * 2, 0), (PAPER_HALF, PAPER_HALF)])
-    #     pygame.draw.rect(basic_surface, WHITE, (20, 0, 20, 20))
-    #     pygame.draw.rect(basic_surface, WHITE, (120, 100, 20, 20))
-    #     pygame.draw.line(basic_surface, WHITE, (199, 1), (199, 199), 10)
-    #
-    #     return basic_surface
 
-
+    #TODO:只画在图区域？
     def pen_draw(self, type, pos):
         if type == 1:
             self.use_pen = True
@@ -141,8 +174,9 @@ class PaperCut():
     def pen_draw_show(self, screen):
         for line in self.lines:
             for i in range(1, len(line)):
-                pygame.draw.line(self.surface, WHITE, line[i-1], line[i], 5)
-        screen.blit(self.surface, (self.surface_start_width, self.surface_start_height))
+                pygame.draw.line(self.paper_surface, WHITE, line[i-1], line[i], 5)
+
+        screen.blit(self.paper_surface, (self.surface_start_width, self.surface_start_height))
 
 
     #方形向上翻折变成长方形，展开时向下翻折
@@ -218,9 +252,9 @@ class PaperCut():
     #     surface.blit(all_one, (x, y))
 
 
-    def handle_click(self, surface, pos, button_rects):
-        for rect, op in button_rects:
-            if rect.collidepoint(pos):
+    def handle_fold_click(self, surface, pos, up_button, left_button, left_up_button, right_up_button):
+        for button, op in zip((up_button, left_button, left_up_button, right_up_button), (UP, LEFT, LEFT_UP, RIGHT_UP)):
+            if button.cover(pos):
                 shape = self.fold(op, self.shape, 0, 0)
                 if shape is None:
                     print("can't fold in this direction!")
@@ -231,32 +265,37 @@ class PaperCut():
                     surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
 
 
-def draw_button(surface):
-    # 按钮设置
-    button_rects = []
-    button_width, button_height = 100, 80
-    button_y = GRID_HEIGHT - button_height - 10  # 按钮在窗口底部
-
-    for index, color_name in enumerate(ALL_OPS):
-        button_rect = pygame.Rect(100 + index * 150, button_y, button_width, button_height)
-        button_rects.append((button_rect, color_name))
-
-    for rect, color_name in button_rects:
-        pygame.draw.rect(screen, (200, 200, 200), rect)  # 按钮背景
-        font = pygame.font.Font(None, 36)
-        text_surface = font.render(color_name, True, (0, 0, 0))
-        text_rect = text_surface.get_rect(center=rect.center)
-        surface.blit(text_surface, text_rect)
-
-    return button_rects
+    def handle_unfold_click(self, surface, pos):
+        print("unfold!!")
+        paper_surface = self.unfold(0, 0)
+        self.surface.fill(WHITE)
+        self.surface.blit(paper_surface, (0, 0))
+        surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
 
 
 
+def draw_buttons(surface):
+    up_button = Button(100, 700, 100, 50, text = "up")
+    left_button = Button(250, 700, 100, 50, text="left")
+    left_up_button = Button(400, 700, 100, 50, text="left up")
+    right_up_button = Button(550, 700, 100, 50, text="right up")
 
+    draw_button = Button(650, 300, 100, 50, text="draw")
+
+    unfold_button = Button(650, 400, 100, 50, text="unfold")
+
+    up_button.draw(surface)
+    left_button.draw(surface)
+    left_up_button.draw(surface)
+    right_up_button.draw(surface)
+    draw_button.draw(surface)
+    unfold_button.draw(surface)
+
+    return up_button, left_button, left_up_button, right_up_button, draw_button, unfold_button
 
 
 screen.fill(WHITE)
-button_rects = draw_button(screen)
+up_button, left_button, left_up_button, right_up_button, draw_button, unfold_button = draw_buttons(screen)
 pygame.display.flip()
 
 clock = pygame.time.Clock()
@@ -268,17 +307,21 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        if event.type == pygame.MOUSEBUTTONDOWN and draw_button.cover(event.pos):
+            papercut.mode = DRAW_MODE
+        if papercut.mode == DRAW_MODE:
+            papercut.pen_draw_show(screen)
+            if event.type == pygame.MOUSEBUTTONDOWN: # and event.button == 1
+                papercut.pen_draw(1, event.pos)
+            elif event.type == pygame.MOUSEBUTTONUP:  #and event.button == 1
+                papercut.pen_draw(2, event.pos)
+            elif event.type == pygame.MOUSEMOTION:
+                papercut.pen_draw(3, event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if unfold_button.cover(event.pos):
+                papercut.handle_unfold_click(screen, event.pos)
+            papercut.handle_fold_click(screen, event.pos, up_button, left_button, left_up_button, right_up_button)
 
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            papercut.pen_draw(1, event.pos)
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            papercut.pen_draw(2, event.pos)
-        elif event.type == pygame.MOUSEMOTION:
-            papercut.pen_draw(3, event.pos)
-
-        # elif event.type == pygame.MOUSEBUTTONDOWN:
-        #     papercut.handle_click(screen, event.pos, button_rects)
-    papercut.pen_draw_show(screen)
 
     pygame.display.flip()
     clock.tick(60)
