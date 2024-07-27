@@ -16,8 +16,8 @@ todo:
 7.23 创建项目，写固定折法展开逻辑
 7.24 写通用的展开图形逻辑，写折叠逻辑，还无法展示
 7.25 正常展示折叠后效果
-7.26 解决不对的方向直接崩溃的问题：不对的方向提示在后台，页面不反应 
-7.27 todo:小图放大（+按钮），对应比例再创作
+7.26 解决不对的方向直接崩溃的问题：不对的方向提示在后台，页面不反应；模拟画笔 
+7.27 todo:小图放大（+按钮），对应比例再创作和展开
 """
 
 # 初始化Pygame
@@ -56,21 +56,23 @@ ALL_OPS = [UP, LEFT, LEFT_UP, RIGHT_UP]
 #纸张一半大小
 PAPER_HALF = 200
 
-start_surface = pygame.Surface((400, 400))
-
 
 class PaperCut():
-    def __init__(self):
-        self.start_surface = pygame.Surface((400, 400))
-        self.start_surface.fill(RED)
+    def __init__(self, surface_start_width=100, surface_start_height=100):
+        self.paper_surface = pygame.Surface((400, 400))
+        self.paper_surface.fill(RED)
         self.shape = SQUARE
         self.surface = pygame.Surface((600, 600))
         self.surface.fill(WHITE)
+        self.use_pen = False
+        self.lines = []
+        self.surface_start_width = surface_start_width
+        self.surface_start_height = surface_start_height
 
 
     def init_show(self, screen):
-        self.surface.blit(self.start_surface, (0, 0))
-        screen.blit(self.surface, (0, 0))
+        self.surface.blit(self.paper_surface, (0, 0))
+        screen.blit(self.surface, (100, 100))
 
 
     def fold_once(self, shape=SQUARE, direction="UP"):
@@ -80,7 +82,7 @@ class PaperCut():
                       TRIANGLE_RIGHT_UP: {LEFT_UP: (TRIANGLE, 1, 0.5)},
                       TRIANGLE: {LEFT: (TRIANGLE_RIGHT_UP, 0.5, 1)},
                       RECTANGLE: {UP: (RECTANGLE, 1, 0.5), LEFT: (RECTANGLE, 0.5, 1)}}
-        width, height = self.start_surface.get_width(), self.start_surface.get_height()
+        width, height = self.paper_surface.get_width(), self.paper_surface.get_height()
         if direction not in valid_fold[shape]: return None
         res = valid_fold[shape][direction]
         width, height = int(width * res[1]), int(height * res[2])
@@ -95,18 +97,18 @@ class PaperCut():
             return None
         else:
             (shape, width, height) = res
-            self.start_surface = pygame.Surface((width, height))
-            self.start_surface.fill(WHITE)
+            self.paper_surface = pygame.Surface((width, height))
+            self.paper_surface.fill(WHITE)
             print("start surface update: ", res)
 
             if shape == RECTANGLE or shape == SQUARE:
-                pygame.draw.rect(self.start_surface, RED, (x, y , width, height))
+                pygame.draw.rect(self.paper_surface, RED, (x, y , width, height))
             elif shape == TRIANGLE_RIGHT_UP:
-                pygame.draw.polygon(self.start_surface, RED, [(x, y), (x + width, y), (x + width, y + height)])
+                pygame.draw.polygon(self.paper_surface, RED, [(x, y), (x + width, y), (x + width, y + height)])
             elif shape == TRIANGLE_LEFT_UP:
-                pygame.draw.polygon(self.start_surface, RED, [(x, y), (x + width, y), (x, y + height)])
+                pygame.draw.polygon(self.paper_surface, RED, [(x, y), (x + width, y), (x, y + height)])
             elif shape == TRIANGLE:
-                pygame.draw.polygon(self.start_surface, RED, [(x, y), (x + width, y), (x + width//2, y + height)])
+                pygame.draw.polygon(self.paper_surface, RED, [(x, y), (x + width, y), (x + width//2, y + height)])
 
         return shape
 
@@ -123,6 +125,24 @@ class PaperCut():
     #     pygame.draw.line(basic_surface, WHITE, (199, 1), (199, 199), 10)
     #
     #     return basic_surface
+
+
+    def pen_draw(self, type, pos):
+        if type == 1:
+            self.use_pen = True
+            self.lines.append([(pos[0] - self.surface_start_width, pos[1] - self.surface_start_height)])
+        elif type == 2:
+            self.use_pen = False
+        elif type == 3:
+            if self.use_pen:
+                self.lines[-1].append((pos[0] - self.surface_start_width, pos[1] - self.surface_start_height))
+
+
+    def pen_draw_show(self, screen):
+        for line in self.lines:
+            for i in range(1, len(line)):
+                pygame.draw.line(self.surface, WHITE, line[i-1], line[i], 5)
+        screen.blit(self.surface, (self.surface_start_width, self.surface_start_height))
 
 
     #方形向上翻折变成长方形，展开时向下翻折
@@ -207,8 +227,8 @@ class PaperCut():
                 else:
                     self.shape = shape
                     self.surface.fill(WHITE)
-                    self.surface.blit(self.start_surface, (0, 0))
-                    surface.blit(self.surface, (0, 0))
+                    self.surface.blit(self.paper_surface, (0, 0))
+                    surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
 
 
 def draw_button(surface):
@@ -230,6 +250,11 @@ def draw_button(surface):
 
     return button_rects
 
+
+
+
+
+
 screen.fill(WHITE)
 button_rects = draw_button(screen)
 pygame.display.flip()
@@ -243,9 +268,17 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            papercut.handle_click(screen, event.pos, button_rects)
 
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            papercut.pen_draw(1, event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            papercut.pen_draw(2, event.pos)
+        elif event.type == pygame.MOUSEMOTION:
+            papercut.pen_draw(3, event.pos)
+
+        # elif event.type == pygame.MOUSEBUTTONDOWN:
+        #     papercut.handle_click(screen, event.pos, button_rects)
+    papercut.pen_draw_show(screen)
 
     pygame.display.flip()
     clock.tick(60)
