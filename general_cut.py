@@ -84,10 +84,10 @@ class Button:
 
 class PaperCut():
     def __init__(self, surface_start_width=0, surface_start_height=0):
-        self.paper_surface = pygame.Surface((400, 400))
+        self.paper_surface = pygame.Surface((400, 400), pygame.SRCALPHA)
         self.paper_surface.fill(RED)
         self.shape = SQUARE
-        self.surface = pygame.Surface((500, 500))
+        self.surface = pygame.Surface((400, 400), pygame.SRCALPHA)
         self.surface.fill(WHITE)
         self.use_pen = False
         self.lines = []
@@ -125,8 +125,8 @@ class PaperCut():
             (shape, width, height) = res
             self.op_list.append(op)
             self.shape_list.append(shape)
-            self.paper_surface = pygame.Surface((width, height))
-            self.paper_surface.fill(WHITE)
+            self.paper_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+            #self.paper_surface.fill(WHITE)
             print("start surface update: ", res)
 
             if shape == RECTANGLE or shape == SQUARE:
@@ -151,10 +151,16 @@ class PaperCut():
             elif op == LEFT:
                 paper_surface = self.draw_left(paper_surface, x, y)
             elif op == LEFT_UP:
-                paper_surface = self.draw_up_left(paper_surface, x, y, shape)
+                if shape == TRIANGLE_LEFT_UP:
+                    paper_surface = self.draw_up_left_from_square(paper_surface, x, y)
+                elif shape == TRIANGLE:
+                    paper_surface = self.draw_up_left_from_triangle(paper_surface, x, y)
             elif op == RIGHT_UP:
-                paper_surface = self.draw_up_right(paper_surface, x, y, shape)
-        return paper_surface
+                if shape == TRIANGLE_RIGHT_UP:
+                    paper_surface = self.draw_up_right_from_square(paper_surface, x, y)
+                elif shape == TRIANGLE:
+                    paper_surface = self.draw_up_right_from_triangle(paper_surface, x, y)
+
         return paper_surface
 
 
@@ -200,6 +206,56 @@ class PaperCut():
         return surface
 
 
+    def draw_up_left_from_square(self, last_surface, x, y, has_fold_line=True):
+        print("draw_up_left_from_square")
+        width, height = last_surface.get_width(), last_surface.get_height()
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        last_surface_flip = pygame.transform.flip(last_surface, True, False)
+        last_surface_flip = pygame.transform.rotate(last_surface_flip, -90)
+        surface.blit(last_surface, (x, y))
+        surface.blit(last_surface_flip, (x, y))
+        if has_fold_line: pygame.draw.line(surface, LIGHT_RED, (x + 1, y + height - 1), (x + width - 1, y + 1), 1)
+        return surface
+
+
+    def draw_up_left_from_triangle(self, last_surface, x, y, has_fold_line=True):
+       print("draw_up_left_from_triangle")
+       width, height = last_surface.get_width(), last_surface.get_height()
+       surface = pygame.Surface((width, height * 2), pygame.SRCALPHA)
+       last_surface_flip = pygame.transform.flip(last_surface, True, False)
+       last_surface_flip = pygame.transform.rotate(last_surface_flip, -90)
+       surface.blit(last_surface, (x, y))
+       surface.blit(last_surface_flip, (x + width // 2, y))
+       if has_fold_line: pygame.draw.line(surface, LIGHT_RED, (x + width // 2 - 1, y + height - 1), (x + width, y), 1)
+       return surface
+
+
+    def draw_up_right_from_square(self, last_surface, x, y, has_fold_line=True):
+        print("draw_up_right_from_square")
+        width, height = last_surface.get_width(), last_surface.get_height()
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        last_surface_flip = pygame.transform.rotate(last_surface, -90)
+        last_surface_flip = pygame.transform.flip(last_surface_flip, True, False)
+        surface.blit(last_surface, (x, y))
+        surface.blit(last_surface_flip, (x, y))
+        if has_fold_line: pygame.draw.line(surface, LIGHT_RED, (x + 1, y + 1), (x + width - 1, y + height - 1), 1)
+        return surface
+
+
+    def draw_up_right_from_triangle(self, last_surface, x, y, has_fold_line=True):
+        print("draw_up_right_from_triangle")
+        width, height = last_surface.get_width(), last_surface.get_height()
+        surface = pygame.Surface((width, height * 2), pygame.SRCALPHA)
+        last_surface_flip = pygame.transform.rotate(last_surface, -90)
+        last_surface_flip = pygame.transform.flip(last_surface_flip, True, False)
+        surface.blit(last_surface, (x, y))
+        surface.blit(last_surface_flip, (x, y))
+        if has_fold_line: pygame.draw.line(surface, LIGHT_RED, (x + 1, y + 1), (x + width//2 - 1, y + height - 1),
+                                           1)
+        return surface
+
+
+
     #正方形or直角三角形左上方翻折
     def draw_up_left(self, last_surface, x, y, type=TRIANGLE_LEFT_UP, has_fold_line=True):
         print(last_surface, x, y, type)
@@ -222,7 +278,6 @@ class PaperCut():
             return surface
 
 
-
     #正方形or直角三角形右上方翻折
     def draw_up_right(self, last_surface, x, y, type=TRIANGLE_RIGHT_UP, has_fold_line=True):
         print(last_surface, x, y, type)
@@ -235,7 +290,7 @@ class PaperCut():
             surface.blit(last_surface_flip, (x + width//2, y))
             if has_fold_line: pygame.draw.line(surface, LIGHT_RED, (x + width//2 + 1, y + height - 1), (x + width - 1, y), 1)
             return surface
-        elif type == TRIANGLE_RIGHT_UP:
+        elif type == TRIANGLE_LEFT_UP:
             surface = pygame.Surface((width, height), pygame.SRCALPHA)
             last_surface_flip = pygame.transform.rotate(last_surface, 90)
             last_surface_flip = pygame.transform.flip(last_surface_flip, True, False)
@@ -253,7 +308,7 @@ class PaperCut():
     #     surface.blit(all_one, (x, y))
 
 
-    def handle_fold_click(self, surface, pos, up_button, left_button, left_up_button, right_up_button):
+    def handle_click(self, surface, pos, up_button, left_button, left_up_button, right_up_button, unfold_button):
         for button, op in zip((up_button, left_button, left_up_button, right_up_button), (UP, LEFT, LEFT_UP, RIGHT_UP)):
             if button.cover(pos):
                 shape = self.fold(op, self.shape, 0, 0)
@@ -264,13 +319,14 @@ class PaperCut():
                     self.surface.fill(WHITE)
                     self.surface.blit(self.paper_surface, (0, 0))
                     surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
+                return "fold"
+        if unfold_button.cover(pos):
+            paper_surface = self.unfold(0, 0)
+            self.surface.fill(WHITE)
+            self.surface.blit(paper_surface, (0, 0))
+            surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
+            return "unfold"
 
-
-    def handle_unfold_click(self, surface):
-        paper_surface = self.unfold(0, 0)
-        self.surface.fill(WHITE)
-        self.surface.blit(paper_surface, (0, 0))
-        surface.blit(self.surface, (self.surface_start_width, self.surface_start_height))
 
 
 
@@ -320,9 +376,8 @@ while running:
             elif event.type == pygame.MOUSEMOTION:
                 papercut.pen_draw(3, event.pos)
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if unfold_button.cover(event.pos):
-                paper_surface = papercut.handle_unfold_click(screen)
-            papercut.handle_fold_click(screen, event.pos, up_button, left_button, left_up_button, right_up_button)
+            mode = papercut.handle_click(screen, event.pos, up_button, left_button, left_up_button, right_up_button, unfold_button)
+            if mode: papercut.mode = mode
 
 
     pygame.display.flip()
